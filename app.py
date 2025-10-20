@@ -11,11 +11,11 @@ def load_reminders():
     if not os.path.exists(REMINDER_FILE):
         # Default reminders
         return [
-            {"name": "HSR", "reset_hour": 3},
-            {"name": "Wuwa", "reset_hour": 3},
-            {"name": "ZZZ", "reset_hour": 3},
-            {"name": "GFL2", "reset_hour": 15},
-            {"name": "Wows", "reset_hour": 1},
+            {"name": "HSR", "reset_hour": 3, "reset_minute": 0},
+            {"name": "Wuwa", "reset_hour": 3, "reset_minute": 0},
+            {"name": "ZZZ", "reset_hour": 3, "reset_minute": 0},
+            {"name": "GFL2", "reset_hour": 15, "reset_minute": 0},
+            {"name": "Wows", "reset_hour": 1, "reset_minute": 0},
         ]
     with open(REMINDER_FILE, "r") as f:
         return json.load(f)
@@ -44,15 +44,26 @@ def reset_status_if_needed(reminders, status):
     now = datetime.datetime.now()
     changed = False
     for reminder in reminders:
-        reset_time = now.replace(hour=reminder["reset_hour"], minute=0, second=0, microsecond=0)
-        if now.hour < reminder["reset_hour"]:
-            reset_time -= datetime.timedelta(days=1)
-        last_reset = status.get(reminder["name"], "")
-        if last_reset != reset_time.strftime("%Y-%m-%d"):
-            status[reminder["name"]] = ""
-            changed = True
+        reset_hour = reminder.get("reset_hour", 0)
+        reset_minute = reminder.get("reset_minute", 0)
+        reset_time = now.replace(hour=reset_hour, minute=reset_minute, second=0, microsecond=0)
+        if now >= reset_time:
+            # Jika sudah lewat waktu reset, hapus status jika waktu reset sudah terlewati
+            reset_str = reset_time.strftime("%Y-%m-%d %H:%M")
+            if status.get(reminder["name"], "") and now.strftime("%Y-%m-%d %H:%M") >= status[reminder["name"]]:
+                status[reminder["name"]] = ""
+                changed = True
     if changed:
         save_status(status)
+
+def get_next_reset(reminder):
+    now = datetime.datetime.now()
+    reset_hour = reminder.get("reset_hour", 0)
+    reset_minute = reminder.get("reset_minute", 0)
+    reset_time = now.replace(hour=reset_hour, minute=reset_minute, second=0, microsecond=0)
+    if now >= reset_time:
+        reset_time += datetime.timedelta(days=1)
+    return reset_time.strftime("%Y-%m-%d %H:%M")
 
 class ReminderApp(tk.Tk):
     def __init__(self):
@@ -137,9 +148,10 @@ class ReminderApp(tk.Tk):
     def toggle_reminder(self, name):
         var = self.vars[name]
         var.set(not var.get())
-        today = datetime.datetime.now().strftime("%Y-%m-%d")
         if var.get():
-            self.status[name] = today
+            # Simpan waktu reset berikutnya
+            reminder = next(r for r in self.reminders if r["name"] == name)
+            self.status[name] = get_next_reset(reminder)
         else:
             self.status[name] = ""
         save_status(self.status)
@@ -172,6 +184,17 @@ class ReminderApp(tk.Tk):
     def update_clock(self):
         now = datetime.datetime.now().strftime("%H:%M:%S")
         self.clock_label.config(text=now)
+        self.status = load_status()
+        reset_status_if_needed(self.reminders, self.status)
+        for name, var in self.vars.items():
+            checked = bool(self.status.get(name, ""))
+            var.set(checked)
+            self.check_buttons[name].config(
+                text=self.get_checkbox_text(name, checked),
+                fg="#44bd32" if checked else "#353b48",
+                bg="#dff9fb" if checked else "#f5f6fa"
+            )
+        self.update_status_label()
         self.after(1000, self.update_clock)
 
     def add_reminder(self):
@@ -180,16 +203,17 @@ class ReminderApp(tk.Tk):
             return
         try:
             hour = int(simpledialog.askstring("Add Reminder", "Reset hour (0-23):"))
-            if not (0 <= hour <= 23):
+            minute = int(simpledialog.askstring("Add Reminder", "Reset minute (0-59):"))
+            if not (0 <= hour <= 23) or not (0 <= minute <= 59):
                 raise ValueError
         except Exception:
-            messagebox.showerror("Invalid", "Reset hour must be 0-23.")
+            messagebox.showerror("Invalid", "Jam dan menit harus diisi dengan benar (0-23 dan 0-59).")
             return
         for r in self.reminders:
             if r["name"] == name:
                 messagebox.showerror("Duplicate", "Reminder name already exists.")
                 return
-        self.reminders.append({"name": name, "reset_hour": hour})
+        self.reminders.append({"name": name, "reset_hour": hour, "reset_minute": minute})
         save_reminders(self.reminders)
         self.create_widgets()
 
@@ -198,13 +222,13 @@ class ReminderApp(tk.Tk):
         if not name:
             return
         try:
-            hour = int(simpledialog.askstring("Edit Reminder", "Reset hour (0-23):", initialvalue=str(reminder["reset_hour"])))
-            if not (0 <= hour <= 23):
+            hour = int(simpledialog.askstring("Edit Reminder", "Reset hour (0-23):", initialvalue=str(reminder.get("reset_hour", 0))))
+            minute = int(simpledialog.askstring("Edit Reminder", "Reset minute (0-59):", initialvalue=str(reminder.get("reset_minute", 0))))
+            if not (0 <= hour <= 23) or not (0 <= minute <= 59):
                 raise ValueError
         except Exception:
-            messagebox.showerror("Invalid", "Reset hour must be 0-23.")
+            messagebox.showerror("Invalid", "Jam dan menit harus diisi dengan benar (0-23 dan 0-59).")
             return
-        # Prevent duplicate names
         for r in self.reminders:
             if r["name"] == name and r is not reminder:
                 messagebox.showerror("Duplicate", "Reminder name already exists.")
@@ -212,7 +236,7 @@ class ReminderApp(tk.Tk):
         old_name = reminder["name"]
         reminder["name"] = name
         reminder["reset_hour"] = hour
-        # Update status key if name changed
+        reminder["reset_minute"] = minute
         if old_name != name:
             self.status[name] = self.status.pop(old_name, "")
         save_reminders(self.reminders)

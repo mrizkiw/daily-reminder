@@ -1,1 +1,1 @@
-[{"name": "HSR", "reset_hour": 3}, {"name": "Wuwa", "reset_hour": 3}, {"name": "ZZZ", "reset_hour": 3}, {"name": "GFL2", "reset_hour": 15}, {"name": "Wows", "reset_hour": 1}]
+[{"name": "HSR", "reset_hour": 3, "reset_minute": 0}, {"name": "Wuwa", "reset_hour": 3, "reset_minute": 0}, {"name": "ZZZ", "reset_hour": 3, "reset_minute": 0}, {"name": "GFL2", "reset_hour": 15, "reset_minute": 0}, {"name": "Wows", "reset_hour": 1, "reset_minute": 0}]
